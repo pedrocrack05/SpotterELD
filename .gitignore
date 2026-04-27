@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+backend/venv/
+backend/.venv/
+env/
+.env
+
+# Build outputs
+dist/
+frontend/dist/
+build/
+.vercel
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+backend/__pycache__/
+
+# Database
+db.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db
