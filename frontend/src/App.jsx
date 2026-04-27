@@ -48,12 +48,10 @@ const LocationInput = ({ label, value, onChange, placeholder }) => {
     try {
       const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5`);
       const data = await res.json();
-      const items = (data.features || [])
-        .filter(f => ['US', 'CA'].includes(f.properties.countrycode))
-        .map(f => {
-          const p = f.properties;
-          return `${p.name}, ${p.state || ''} ${p.country || ''}`.replace(/  +/g, ' ').trim();
-        });
+      const items = (data.features || []).map(f => {
+        const p = f.properties;
+        return `${p.name}, ${p.state || ''} ${p.country || ''}`.replace(/  +/g, ' ').trim();
+      });
       setSuggestions([...new Set(items)]);
       setShow(true);
     } catch {
