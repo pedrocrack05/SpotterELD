@@ -48,10 +48,12 @@ const LocationInput = ({ label, value, onChange, placeholder }) => {
     try {
       const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5`);
       const data = await res.json();
-      const items = data.features.map(f => {
-        const p = f.properties;
-        return [p.name, p.state, p.country].filter(Boolean).join(', ');
-      });
+      const items = (data.features || [])
+        .filter(f => ['US', 'CA'].includes(f.properties.countrycode))
+        .map(f => {
+          const p = f.properties;
+          return `${p.name}, ${p.state || ''} ${p.country || ''}`.replace(/  +/g, ' ').trim();
+        });
       setSuggestions([...new Set(items)]);
       setShow(true);
     } catch {
@@ -334,7 +336,7 @@ function App() {
 
             {/* Route summary */}
             {route && (
-              <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100 space-y-2">
+              <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100 space-y-2 mt-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <h3 className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Route Summary</h3>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -344,22 +346,9 @@ function App() {
                     </p>
                     <p className="text-[8px] text-indigo-300">{route.distance_km?.toLocaleString()} km</p>
                   </div>
-                  <div>
-                    <p className="text-[8px] text-indigo-400 font-bold uppercase">Drive Time</p>
-                    <p className="text-base font-black text-indigo-900">
-                      {Math.floor((route.duration_mins || 0) / 60)}h {(route.duration_mins || 0) % 60}m
-                    </p>
-                  </div>
                 </div>
                 <p className="text-[8px] text-indigo-400 font-bold uppercase">Log Days</p>
                 <p className="text-sm font-black text-indigo-900">{Object.keys(logsByDay).length} day(s)</p>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div className="p-3 bg-rose-50 border-2 border-rose-200 text-rose-600 text-[9px] font-black rounded-xl">
-                ⚠️ {error}
               </div>
             )}
           </div>
@@ -368,7 +357,23 @@ function App() {
         {/* ── Log sheets ── */}
         <section className="flex-1 p-8 overflow-y-auto bg-slate-50">
           <div className="max-w-5xl mx-auto space-y-10">
-            {hasResults ? (
+            {error ? (
+              <div className="bg-white p-12 rounded-3xl shadow-xl border border-rose-100 text-center space-y-4 animate-in fade-in zoom-in duration-300 mt-12">
+                <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-10 h-10 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter italic">Calculation Error</h3>
+                <p className="text-slate-500 font-medium max-w-sm mx-auto">{error}</p>
+                <button 
+                  onClick={() => setError(null)}
+                  className="mt-4 px-8 py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-slate-800 transition-all active:scale-95"
+                >
+                  Clear Error
+                </button>
+              </div>
+            ) : hasResults ? (
               Object.entries(logsByDay).map(([date, dayEvents]) => {
                 const driveMins  = dayEvents.filter(e => e.status === 3).reduce((s, e) => s + e.duration_mins, 0);
                 const onDutyMins = dayEvents.filter(e => e.status === 4).reduce((s, e) => s + e.duration_mins, 0);
@@ -389,8 +394,8 @@ function App() {
                           <span className="text-[13px] text-amber-400 font-bold">
                             ⚙️ On Duty: {Math.floor(onDutyMins/60)}h {onDutyMins%60}m
                           </span>
-                      </div>
                         </div>
+                      </div>
                     </div>
                     <div className="p-6">
                       <LogGrid events={dayEvents} date={date} />

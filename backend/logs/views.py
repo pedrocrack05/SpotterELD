@@ -1,9 +1,20 @@
 import json
 import requests
+import math
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from .services import HOSEngine
 from .pdf_generator import ELDPdfGenerator
+
+def _haversine(lon1, lat1, lon2, lat2):
+    """Calculate the great circle distance in km between two points."""
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1-a))
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _geocode(name: str):
@@ -11,30 +22,37 @@ def _geocode(name: str):
     name = name.strip().lower()
     print(f"DEBUG: Calling Photon API for '{name}'...")
     # Photon is more relaxed and faster than Nominatim for development
+    # Filtramos por códigos de país: US (EE.UU.) y CA (Canadá)
     url = f"https://photon.komoot.io/api/?q={name}&limit=1"
     
     try:
-        headers = {"User-Agent": "SpotterTrucks_App_Debug_Global"}
+        headers = {"User-Agent": "SpotterTrucks_App_Global"}
         r = requests.get(url, headers=headers, timeout=10)
         if r.status_code != 200:
-            print(f"DEBUG: Photon API Error {r.status_code}")
             return None
             
         res = r.json()
         features = res.get("features", [])
         if features:
             props = features[0].get("properties", {})
+            cc = props.get('countrycode', '').upper()
+            
+            # Validación estricta: Solo EE.UU. y Canadá
+            if cc not in ['US', 'CA']:
+                print(f"DEBUG: Photon Ignored '{name}' -> Found in {cc}, but only US/CA allowed.")
+                return None, "OUT_OF_BOUNDS"
+
             full_name = f"{props.get('name')}, {props.get('state', '')} {props.get('country', '')}".strip()
             coords = features[0]["geometry"]["coordinates"] # [lon, lat]
             result = (float(coords[0]), float(coords[1]))
             print(f"DEBUG: Photon Success for '{name}' -> Found: '{full_name}' at {result}")
-            return result
+            return result, None
             
         print(f"DEBUG: Photon Empty Result for '{name}'")
-        return None
+        return None, "NOT_FOUND"
     except Exception as e:
         print(f"DEBUG: Photon Exception for '{name}': {e}")
-        return None
+        return None, "ERROR"
 
 
 def _osrm_route(lon1, lat1, lon2, lat2):
@@ -54,6 +72,28 @@ def _osrm_route(lon1, lat1, lon2, lat2):
         dist   = route["distance"] / 1000.0
         dur    = int(route["duration"] / 60)
         coords = route["geometry"]["coordinates"]
+        dist_miles = dist * 0.621371
+        
+        # Distancia física mínima (línea recta)
+        min_dist_km = _haversine(lon1, lat1, lon2, lat2)
+        
+        print(f"DEBUG: OSRM Result -> Road: {dist:.1f} km, Air: {min_dist_km:.1f} km, Points: {len(coords)}")
+
+        # 1. Bloquear si la distancia física mínima es mayor a 4000 km (Océanos)
+        if min_dist_km > 4000:
+            print(f"DEBUG: OSRM Error: Straight line distance too long ({min_dist_km:.1f} km).")
+            return None
+
+        # 2. Bloquear si la distancia de OSRM es sospechosamente menor que la línea recta
+        if dist < (min_dist_km * 0.8):
+            print(f"DEBUG: OSRM Error: Impossible route distance.")
+            return None
+            
+        # 3. Bloquear si la ruta es demasiado simple para su distancia
+        if dist > 500 and len(coords) < 100:
+            print(f"DEBUG: OSRM Error: Geometry too simple.")
+            return None
+
         return dist, dur, coords
     except Exception as e:
         print(f"DEBUG: OSRM Exception: {e}")
@@ -82,14 +122,22 @@ def calculate_logs(request):
         return JsonResponse({"error": "Missing required fields"}, status=400)
 
     # ── Geocoding ─────────────────────────────────────────────────────────────
-    c_coords = _geocode(current_loc)
-    p_coords = _geocode(pickup_loc)
-    d_coords = _geocode(dropoff_loc)
+    c_res, c_err = _geocode(current_loc)
+    p_res, p_err = _geocode(pickup_loc)
+    d_res, d_err = _geocode(dropoff_loc)
 
-    if not all([c_coords, p_coords, d_coords]):
+    errors = [c_err, p_err, d_err]
+    if "OUT_OF_BOUNDS" in errors:
         return JsonResponse(
-            {"error": "One or more locations not found. Please check spelling or try again in a moment."}, status=400
+            {"error": "Location outside permitted area (US & Canada only)."}, status=400
         )
+
+    if not all([c_res, p_res, d_res]):
+        return JsonResponse(
+            {"error": "One or more locations not found. Please check spelling."}, status=400
+        )
+
+    c_coords, p_coords, d_coords = c_res, p_res, d_res
 
     # ── OSRM routing ─────────────────────────────────────────────────────────
     leg1 = _osrm_route(*c_coords, *p_coords)
