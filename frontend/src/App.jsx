@@ -221,7 +221,7 @@ function App() {
       {/* ── Header ── */}
       <header className="bg-slate-900 text-white px-6 py-3 shadow-xl z-10 flex justify-between items-center shrink-0">
         <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 w-9 h-9 rounded-lg flex items-center justify-center font-black italic text-xl">S</div>
+          <img className="w-10 h-10" src="/logo.svg" alt="" />
           <div>
             <h1 className="text-lg font-black tracking-tighter uppercase italic leading-none">
               SPOTTER <span className="text-indigo-400">TRUCKS</span>
