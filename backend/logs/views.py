@@ -67,7 +67,7 @@ def _route_crosses_water(coords):
     if not coords or len(coords) < 2:
         return False
     
-    max_jump_allowed = 200  # km
+    max_jump_allowed = 100  # km
     large_jumps = 0
     
     # Check each consecutive segment of the route
@@ -81,8 +81,8 @@ def _route_crosses_water(coords):
             large_jumps += 1
             print(f"DEBUG: ⚠️  Large jump detected: {distance:.1f} km between point {i} and {i+1}")
     
-    # If there are more than 2 large jumps, something is wrong
-    if large_jumps > 2:
+    # If there is even one large jump, something is wrong (ocean crossing or bad data)
+    if large_jumps > 0:
         print(f"DEBUG: Detected {large_jumps} large jumps - probably water")
         return True
     
@@ -151,12 +151,30 @@ def _osrm_route(lon1, lat1, lon2, lat2, validate_real_route=True):
         # Calculate straight-line distance (reference)
         min_dist_km = _haversine(lon1, lat1, lon2, lat2)
         
+        # ════════════════════════════════════════════════════════════════
+        # VALIDATION 7: Long ferries (Ocean crossings)
+        # ════════════════════════════════════════════════════════════════
+        for leg in route.get("legs", []):
+            for step in leg.get("steps", []):
+                if step.get("mode") == "ferry":
+                    ferry_dist_km = step.get("distance", 0) / 1000.0
+                    if ferry_dist_km > 100:
+                        print(f"DEBUG: ❌ REJECTED - Route includes an impossible long ferry ({ferry_dist_km:.1f} km)")
+                        return None
+        
         print(f"DEBUG: 📊 OSRM Result -> Road: {dist_km:.1f} km, Air: {min_dist_km:.1f} km, Points: {len(coords)}")
         
         # If not validating, return directly (debug mode)
         if not validate_real_route:
             print(f"DEBUG: ⚠️  Validation disabled - returning route without verification")
             return dist_km, dur_mins, coords
+        
+        # ════════════════════════════════════════════════════════════════
+        # VALIDATION 2: Straight-line distance > 6000 km (ocean / intercontinental)
+        # ════════════════════════════════════════════════════════════════
+        if min_dist_km > 6000:
+            print(f"DEBUG: ❌ REJECTED - Straight-line distance {min_dist_km:.1f} km > 6000 km (impossible truck route)")
+            return None
         
         # ════════════════════════════════════════════════════════════════
         # VALIDATION 3: Route shorter than straight line (impossible)
