@@ -159,13 +159,6 @@ def _osrm_route(lon1, lat1, lon2, lat2, validate_real_route=True):
             return dist_km, dur_mins, coords
         
         # ════════════════════════════════════════════════════════════════
-        # VALIDATION 2: Straight-line distance > 4000 km (ocean)
-        # ════════════════════════════════════════════════════════════════
-        if min_dist_km > 4000:
-            print(f"DEBUG: ❌ REJECTED - Straight line {min_dist_km:.1f} km > 4000 km (ocean)")
-            return None
-        
-        # ════════════════════════════════════════════════════════════════
         # VALIDATION 3: Route shorter than straight line (impossible)
         # ════════════════════════════════════════════════════════════════
         if dist_km < (min_dist_km * 0.8):
